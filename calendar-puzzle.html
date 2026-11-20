@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>日历拼图自动求解</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    color-scheme: light;
+    --page: #f3f0e9;
+    --paper: #fffdf8;
+    --ink: #302c25;
+    --muted: #787064;
+    --line: #e0d9cc;
+    --accent: #526c58;
+  }
+  body {
+    margin: 0;
+    padding: 28px 14px 40px;
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Microsoft YaHei", sans-serif;
+  }
+  main { max-width: 780px; margin: auto; }
+  h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: -.5px; }
+  .intro {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.8;
+    margin: 0 0 22px;
+  }
+  .panel {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 20px;
+    box-shadow: 0 8px 30px rgba(50, 40, 20, .04);
+  }
+  .inputs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .field { display: flex; flex-direction: column; gap: 7px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  select {
+    width: 100%;
+    min-height: 46px;
+    padding: 9px 10px;
+    border: 1px solid #d8d0c2;
+    border-radius: 9px;
+    color: var(--ink);
+    background: #fff;
+    font: inherit;
+    font-size: 16px;
+  }
+  select:focus-visible, button:focus-visible, .piece:focus-visible {
+    outline: 3px solid #99b4a0;
+    outline-offset: 3px;
+  }
+  .options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 17px;
+  }
+  .checkbox {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: #605a50;
+    cursor: pointer;
+  }
+  input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 17px;
+    height: 17px;
+  }
+  button {
+    border: 1px solid #d9d1c4;
+    border-radius: 9px;
+    background: var(--paper);
+    color: #50493f;
+    font: inherit;
+    font-size: 13px;
+    padding: 10px 14px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #f0ece3; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .primary {
+    padding: 11px 23px;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+    font-weight: 650;
+  }
+  .primary:hover:not(:disabled) { background: #415b47; }
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    margin: 22px 0 12px;
+  }
+  .result-title { font-size: 18px; font-weight: 750; }
+  .tools { display: flex; gap: 7px; flex-wrap: wrap; }
+  .tools button { font-size: 12px; padding: 8px 11px; }
+  .status {
+    margin: 12px 0;
+    padding: 11px 14px;
+    border-radius: 10px;
+    background: #e8eee7;
+    color: #45604b;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .status.error { background: #f6e8e0; color: #985632; }
+  .status.busy { background: #efe9db; color: #817043; }
+  .board-panel { padding: 22px; }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    max-width: 560px;
+    margin: 0 auto;
+    overflow: hidden;
+  }
+  .cell {
+    aspect-ratio: 1;
+    min-width: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #ded7ca;
+    background: #efebe3;
+    color: #928878;
+    font-size: clamp(10px, 2.8vw, 18px);
+    font-weight: 650;
+    user-select: none;
+    transition: opacity .15s;
+  }
+  .cell.blank {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .cell.hole {
+    background: var(--paper) !important;
+    color: #24231e;
+    border: 2px solid #38352f !important;
+    z-index: 1;
+    font-weight: 800;
+    cursor: default;
+  }
+  .cell.colored { color: #292720; cursor: pointer; }
+  .cell.dim { opacity: .18; }
+  .badge {
+    position: absolute;
+    top: 3px;
+    left: 5px;
+    font-size: 10px;
+    line-height: 1;
+    opacity: .7;
+    font-weight: 500;
+  }
+  .hint {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.8;
+    margin: 17px 0 0;
+  }
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .piece {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    min-width: 0;
+    text-align: left;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 11px;
+  }
+  .piece.active {
+    border-color: #526c58;
+    box-shadow: 0 0 0 2px #526c58;
+  }
+  .mini {
+    display: grid;
+    grid-template-columns: repeat(4, 12px);
+    grid-template-rows: repeat(4, 12px);
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+  }
+  .mini span { border: 1px solid var(--paper); }
+  .piece-name { font-size: 13px; font-weight: 650; }
+  .piece-detail {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .footnote {
+    margin: 19px 2px 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.9;
+  }
+  [hidden] { display: none !important; }
+  @media (max-width: 460px) {
+    body { padding: 18px 10px 30px; }
+    h1 { font-size: 23px; }
+    .panel { padding: 15px; border-radius: 14px; }
+    .board-panel { padding: 12px; }
+    .inputs { gap: 8px; }
+    select { padding: 8px 6px; font-size: 15px; }
+    .result-title { font-size: 16px; }
+    .piece { gap: 8px; padding: 10px 8px; }
+    .piece-name { font-size: 12px; }
+    .badge { top: 2px; left: 3px; font-size: 8px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>日历拼图 · 自动拼法</h1>
+  <p class="intro">
+    选择需要露出的月、日、星期，其余格子由 10 块拼图完整覆盖。<br>
+    同一种颜色代表同一块拼图，白色格保持露出。
+  </p>
+
+  <section class="panel">
+    <div class="inputs">
+      <div class="field">
+        <label for="month">月份</label>
+        <select id="month"></select>
+      </div>
+      <div class="field">
+        <label for="day">日期</label>
+        <select id="day"></select>
+      </div>
+      <div class="field">
+        <label for="weekday">星期</label>
+        <select id="weekday"></select>
+      </div>
+    </div>
+    <div class="options">
+      <label class="checkbox">
+        <input id="flip" type="checkbox" checked>
+        允许拼块翻面
+      </label>
+      <button id="solve" class="primary">显示拼法</button>
+    </div>
+  </section>
+
+  <div class="toolbar">
+    <div id="resultTitle" class="result-title">11月20日 · 星期五</div>
+    <div class="tools">
+      <button id="clearHighlight" disabled>显示全部拼块</button>
+      <button id="next" disabled>换一种拼法</button>
+    </div>
+  </div>
+
+  <div id="status" class="status" role="status" aria-live="polite">
+    正在准备……
+  </div>
+
+  <section class="panel board-panel">
+    <div id="board" class="board" aria-label="日历拼图方案"></div>
+    <p class="hint">
+      棋盘已转正：月份在上，星期在下。<br>
+      白色格是目标；色块之间的白色粗线是拼块边界。<br>
+      点击棋盘色块或下方图例，可单独查看一块。
+    </p>
+  </section>
+
+  <div id="legend" class="legend" aria-label="拼块图例"></div>
+
+  <p class="footnote">
+    说明：拼块轮廓按附件照片录入，允许旋转；是否允许翻面由勾选项控制。
+    月、日、星期可以自由组合，不绑定年份，也不会自动更改你选择的星期。
+    无解时会明确提示，不会显示不完整的拼法。
+  </p>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  // 坐标采用 [列, 行]，每块以左上角为原点。
+  const pieces = [
+    {
+      name: "直条",
+      color: "#E2B94F",
+      cells: [[0,0],[1,0],[2,0],[3,0]]
+    },
+    {
+      name: "长 L 形",
+      color: "#7CABCF",
+      cells: [[0,0],[1,0],[2,0],[3,0],[0,1]]
+    },
+    {
+      name: "T 形",
+      color: "#CB98B8",
+      cells: [[0,0],[0,1],[0,2],[1,1],[2,1]]
+    },
+    {
+      name: "长 Z 形",
+      color: "#83B795",
+      cells: [[1,0],[2,0],[1,1],[0,2],[1,2]]
+    },
+    {
+      name: "短 L 形",
+      color: "#E79D76",
+      cells: [[0,0],[1,0],[2,0],[0,1]]
+    },
+    {
+      name: "U 形",
+      color: "#A19DD1",
+      cells: [[0,0],[1,0],[1,1],[0,2],[1,2]]
+    },
+    {
+      name: "短 Z 形",
+      color: "#CFCA76",
+      cells: [[0,0],[0,1],[1,1],[1,2]]
+    },
+    {
+      name: "斜阶梯形",
+      color: "#75BBB9",
+      cells: [[0,0],[1,0],[1,1],[2,1],[3,1]]
+    },
+    {
+      name: "大拐角形",
+      color: "#D9898D",
+      cells: [[2,0],[2,1],[0,2],[1,2],[2,2]]
+    },
+    {
+      name: "小方角形",
+      color: "#AFA18A",
+      cells: [[1,0],[0,1],[1,1],[0,2],[1,2]]
+    }
+  ];
+
+  // 将照片中的棋盘转正后的布局。
+  const layout = [
+    ["1月","2月","3月","4月","5月","6月",null],
+    ["7月","8月","9月","10月","11月","12月",null],
+    ["1日","2日","3日","4日","5日","6日","7日"],
+    ["8日","9日","10日","11日","12日","13日","14日"],
+    ["15日","16日","17日","18日","19日","20日","21日"],
+    ["22日","23日","24日","25日","26日","27日","28日"],
+    ["29日","30日","31日","星期日","星期一","星期二","星期三"],
+    [null,null,null,null,"星期四","星期五","星期六"]
+  ];
+
+  const weekdays = [
+    "星期日","星期一","星期二","星期三",
+    "星期四","星期五","星期六"
+  ];
+
+  const $ = id => document.getElementById(id);
+  const coordinate = (x,y) => x + "," + y;
+
+  let generation = 0;
+  let engine = null;
+  let selectedPiece = -1;
+  let busy = false;
+  let solutionNumber = 0;
+  let currentHoles = new Set(["11月","20日","星期五"]);
+
+  function fillSelect(element, values, selected) {
+    values.forEach(value => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      element.appendChild(option);
+    });
+    element.value = selected;
+  }
+
+  fillSelect(
+    $("month"),
+    Array.from({length:12}, (_,i) => (i+1)+"月"),
+    "11月"
+  );
+  fillSelect(
+    $("day"),
+    Array.from({length:31}, (_,i) => (i+1)+"日"),
+    "20日"
+  );
+  fillSelect($("weekday"), weekdays, "星期五");
+
+  function setStatus(message, type = "") {
+    $("status").textContent = message;
+    $("status").className = "status" + (type ? " " + type : "");
+  }
+
+  function setBusy(value) {
+    busy = value;
+    $("solve").textContent = value ? "重新计算" : "显示拼法";
+    $("next").disabled = value || !engine || solutionNumber === 0;
+  }
+
+  function highlight(pieceIndex) {
+    selectedPiece = selectedPiece === pieceIndex ? -1 : pieceIndex;
+    applyHighlight();
+  }
+
+  function applyHighlight() {
+    document.querySelectorAll(".cell[data-piece]").forEach(cell => {
+      cell.classList.toggle(
+        "dim",
+        selectedPiece !== -1 &&
+        Number(cell.dataset.piece) !== selectedPiece
+      );
+      cell.setAttribute(
+        "aria-pressed",
+        String(Number(cell.dataset.piece) === selectedPiece)
+      );
+    });
+    document.querySelectorAll(".piece").forEach((button, i) => {
+      button.classList.toggle("active", i === selectedPiece);
+      button.setAttribute("aria-pressed", String(i === selectedPiece));
+    });
+  }
+
+  function createLegend() {
+    pieces.forEach((piece, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "piece";
+      button.disabled = true;
+      button.onclick = () => highlight(index);
+
+      const mini = document.createElement("div");
+      mini.className = "mini";
+      mini.setAttribute("aria-hidden", "true");
+
+      piece.cells.forEach(([x,y]) => {
+        const square = document.createElement("span");
+        square.style.gridColumn = String(x + 1);
+        square.style.gridRow = String(y + 1);
+        square.style.backgroundColor = piece.color;
+        mini.appendChild(square);
+      });
+
+      const text = document.createElement("div");
+      const name = document.createElement("div");
+      name.className = "piece-name";
+      name.textContent = (index + 1) + ". " + piece.name;
+
+      const detail = document.createElement("span");
+      detail.className = "piece-detail";
+      detail.textContent = piece.cells.length + " 格 · 点击突出显示";
+
+      text.append(name, detail);
+      button.append(mini, text);
+      $("legend").appendChild(button);
+    });
+  }
+
+  function renderBoard(solution = null) {
+    selectedPiece = -1;
+    const owners = new Map();
+
+    if (solution) {
+      solution.forEach(placement => {
+        placement.cells.forEach(([x,y]) => {
+          owners.set(coordinate(x,y), placement.pieceIndex);
+        });
+      });
+    }
+
+    $("board").replaceChildren();
+
+    layout.forEach((row,y) => {
+      row.forEach((label,x) => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+
+        if (!label) {
+          cell.classList.add("blank");
+          cell.setAttribute("aria-hidden", "true");
+        } else if (currentHoles.has(label)) {
+          cell.classList.add("hole");
+          cell.textContent = label;
+          cell.title = "保持露出：" + label;
+        } else if (solution) {
+          const pieceIndex = owners.get(coordinate(x,y));
+          const piece = pieces[pieceIndex];
+
+          cell.classList.add("colored");
+          cell.dataset.piece = String(pieceIndex);
+          cell.style.backgroundColor = piece.color;
+          cell.textContent = label;
+
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = pieceIndex + 1;
+          cell.appendChild(badge);
+
+          [
+            ["Top",0,-1],
+            ["Right",1,0],
+            ["Bottom",0,1],
+            ["Left",-1,0]
+          ].forEach(([edge,dx,dy]) => {
+            const samePiece =
+              owners.get(coordinate(x+dx,y+dy)) === pieceIndex;
+            cell.style["border"+edge+"Width"] =
+              samePiece ? "1px" : "3px";
+            cell.style["border"+edge+"Color"] =
+              samePiece ? "rgba(255,255,255,.25)" : "#fffdf8";
+          });
+
+          cell.title =
+            label + "：第 " + (pieceIndex+1) + " 块，" + piece.name;
+          cell.setAttribute("role", "button");
+          cell.tabIndex = 0;
+          cell.onclick = () => highlight(pieceIndex);
+          cell.onkeydown = event => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              highlight(pieceIndex);
+            }
+          };
+        } else {
+          cell.textContent = label;
+        }
+
+        $("board").appendChild(cell);
+      });
+    });
+
+    document.querySelectorAll(".piece").forEach(button => {
+      button.disabled = !solution;
+    });
+    $("clearHighlight").disabled = !solution;
+    applyHighlight();
+  }
+
+  function getOrientations(cells, allowFlip) {
+    const result = [];
+    const seen = new Set();
+
+    for (let flip = 0; flip < (allowFlip ? 2 : 1); flip++) {
+      for (let rotation = 0; rotation < 4; rotation++) {
+        let transformed = cells.map(([originalX,originalY]) => {
+          let x = flip ? -originalX : originalX;
+          let y = originalY;
+          for (let r = 0; r < rotation; r++) {
+            [x,y] = [-y,x];
+          }
+          return [x,y];
+        });
+
+        const minX = Math.min(...transformed.map(cell => cell[0]));
+        const minY = Math.min(...transformed.map(cell => cell[1]));
+
+        transformed = transformed
+          .map(([x,y]) => [x-minX,y-minY])
+          .sort((a,b) => a[1]-b[1] || a[0]-b[0]);
+
+        const signature = JSON.stringify(transformed);
+        if (!seen.has(signature)) {
+          seen.add(signature);
+          result.push(transformed);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  function buildEngine(holes, allowFlip) {
+    const positions = [];
+    const index = new Map();
+
+    layout.forEach((row,y) => row.forEach((label,x) => {
+      if (label && !holes.has(label)) {
+        index.set(coordinate(x,y), positions.length);
+        positions.push([x,y]);
+      }
+    }));
+
+    const area = pieces.reduce((sum,piece) => sum+piece.cells.length, 0);
+    if (area !== positions.length) {
+      throw new Error("拼块总面积与待覆盖格数不一致，请核对棋盘和拼块。");
+    }
+
+    // 精确覆盖约束：每个待覆盖格一次，每块拼图一次。
+    const cellCount = positions.length;
+    const constraintCount = cellCount + pieces.length;
+    const bits = Array.from(
+      {length:constraintCount},
+      (_,i) => 1n << BigInt(i)
+    );
+    const fullMask = (1n << BigInt(constraintCount)) - 1n;
+    const placements = [];
+    const byConstraint = Array.from(
+      {length:constraintCount},
+      () => []
+    );
+
+    pieces.forEach((piece,pieceIndex) => {
+      getOrientations(piece.cells,allowFlip).forEach(shape => {
+        const width = 1 + Math.max(...shape.map(cell => cell[0]));
+        const height = 1 + Math.max(...shape.map(cell => cell[1]));
+
+        for (let y = 0; y <= layout.length-height; y++) {
+          for (let x = 0; x <= 7-width; x++) {
+            const cells = shape.map(([dx,dy]) => [x+dx,y+dy]);
+            const cellIds = cells.map(([cx,cy]) =>
+              index.get(coordinate(cx,cy))
+            );
+
+            if (cellIds.some(id => id === undefined)) continue;
+
+            const columns = [...cellIds,cellCount+pieceIndex];
+            let mask = 0n;
+            columns.forEach(column => { mask |= bits[column]; });
+
+            const id = placements.length;
+            placements.push({pieceIndex,cells,mask});
+            columns.forEach(column => byConstraint[column].push(id));
+          }
+        }
+      });
+    });
+
+    function chooseOptions(used) {
+      let best = null;
+
+      for (let column = 0; column < constraintCount; column++) {
+        if ((used & bits[column]) !== 0n) continue;
+
+        const available = [];
+        for (const id of byConstraint[column]) {
+          if ((placements[id].mask & used) === 0n) {
+            available.push(id);
+          }
+        }
+
+        if (available.length === 0) return [];
+
+        if (best === null || available.length < best.length) {
+          best = available;
+          if (best.length === 1) break;
+        }
+      }
+
+      return best || [];
+    }
+
+    return {
+      placements,
+      fullMask,
+      chooseOptions,
+      stack: [{
+        used: 0n,
+        options: chooseOptions(0n),
+        next: 0,
+        placementId: null
+      }],
+      nodes: 0,
+      elapsed: 0,
+      exhausted: false,
+      afterSolution: false,
+      allowFlip
+    };
+  }
+
+  // 分时间片搜索，避免长时间占用界面。
+  // 找到方案后保留搜索栈，以便继续寻找下一个方案。
+  function searchNext(token) {
+    const activeEngine = engine;
+    const started = performance.now();
+    setBusy(true);
+
+    if (activeEngine.afterSolution) {
+      activeEngine.stack.pop();
+      activeEngine.afterSolution = false;
+    }
+
+    function tick() {
+      if (token !== generation || engine !== activeEngine) return;
+
+      const deadline = performance.now() + 14;
+      let answer = null;
+
+      while (
+        activeEngine.stack.length > 0 &&
+        performance.now() < deadline
+      ) {
+        const frame =
+          activeEngine.stack[activeEngine.stack.length-1];
+
+        if (frame.used === activeEngine.fullMask) {
+          answer = activeEngine.stack
+            .slice(1)
+            .map(item => activeEngine.placements[item.placementId]);
+          activeEngine.afterSolution = true;
+          break;
+        }
+
+        if (frame.next >= frame.options.length) {
+          activeEngine.stack.pop();
+          continue;
+        }
+
+        const placementId = frame.options[frame.next++];
+        const placement = activeEngine.placements[placementId];
+        const used = frame.used | placement.mask;
+        activeEngine.nodes++;
+
+        if (used === activeEngine.fullMask) {
+          activeEngine.stack.push({
+            used,
+            options: [],
+            next: 0,
+            placementId
+          });
+        } else {
+          const options = activeEngine.chooseOptions(used);
+          if (options.length > 0) {
+            activeEngine.stack.push({
+              used,
+              options,
+              next: 0,
+              placementId
+            });
+          }
+        }
+      }
+
+      const elapsed =
+        activeEngine.elapsed + performance.now()-started;
+
+      if (answer) {
+        activeEngine.elapsed = elapsed;
+        solutionNumber++;
+        renderBoard(answer);
+        setBusy(false);
+
+        setStatus(
+          "已找到第 " + solutionNumber + " 个方案 · " +
+          "10 块全部使用，无重叠、无遗漏 · " +
+          (activeEngine.allowFlip ? "允许旋转与翻面" : "仅允许旋转") +
+          " · 累计计算 " + (elapsed/1000).toFixed(2) + " 秒"
+        );
+        return;
+      }
+
+      if (activeEngine.stack.length === 0) {
+        activeEngine.exhausted = true;
+        activeEngine.elapsed = elapsed;
+        setBusy(false);
+        $("next").disabled = true;
+
+        if (solutionNumber > 0) {
+          setStatus(
+            "已遍历完毕，共找到 " + solutionNumber +
+            " 个方案。当前保留最后一个方案。"
+          );
+        } else {
+          const suggestion = activeEngine.allowFlip
+            ? "请核对实物拼块是否与下方轮廓一致。"
+            : "可以勾选“允许拼块翻面”后再试。";
+
+          setStatus(
+            "在当前规则下未找到完整拼法。" + suggestion,
+            "error"
+          );
+        }
+        return;
+      }
+
+      setStatus(
+        "正在搜索" +
+        (solutionNumber ? "其他拼法" : "完整拼法") +
+        "…… 已尝试 " +
+        activeEngine.nodes.toLocaleString() +
+        " 次放置，用时 " +
+        (elapsed/1000).toFixed(1) +
+        " 秒。你可以修改选项后重新计算。",
+        "busy"
+      );
+
+      setTimeout(tick,0);
+    }
+
+    setTimeout(tick,0);
+  }
+
+  function startSolve() {
+    const token = ++generation;
+    solutionNumber = 0;
+    engine = null;
+
+    const month = $("month").value;
+    const day = $("day").value;
+    const weekday = $("weekday").value;
+    const allowFlip = $("flip").checked;
+
+    currentHoles = new Set([month,day,weekday]);
+    $("resultTitle").textContent = month + day + " · " + weekday;
+    renderBoard();
+    setBusy(true);
+    setStatus("正在生成可用拼块位置……", "busy");
+
+    setTimeout(() => {
+      if (token !== generation) return;
+
+      try {
+        if (typeof BigInt !== "function") {
+          throw new Error("请使用支持 BigInt 的新版浏览器。");
+        }
+        engine = buildEngine(currentHoles,allowFlip);
+        searchNext(token);
+      } catch (error) {
+        engine = null;
+        setBusy(false);
+        setStatus("计算失败：" + error.message, "error");
+      }
+    },20);
+  }
+
+  function invalidate() {
+    generation++;
+    engine = null;
+    solutionNumber = 0;
+    currentHoles = new Set([
+      $("month").value,
+      $("day").value,
+      $("weekday").value
+    ]);
+
+    $("resultTitle").textContent =
+      $("month").value + $("day").value + " · " + $("weekday").value;
+
+    setBusy(false);
+    renderBoard();
+    setStatus("选项已更新，点击“显示拼法”开始计算。");
+  }
+
+  $("solve").onclick = startSolve;
+
+  $("next").onclick = () => {
+    if (busy || !engine || engine.exhausted) return;
+    searchNext(++generation);
+  };
+
+  $("clearHighlight").onclick = () => {
+    selectedPiece = -1;
+    applyHighlight();
+  };
+
+  [$("month"),$("day"),$("weekday"),$("flip")].forEach(element => {
+    element.addEventListener("change",invalidate);
+  });
+
+  createLegend();
+  renderBoard();
+  startSolve();
+})();
+</script>
+</body>
+</html>
